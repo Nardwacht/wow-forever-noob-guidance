@@ -58,7 +58,7 @@ local function Render(results)
     local message
     if not results then
         panel.header:SetText("Noob Guidance")
-        message = "Loading quests..."
+        message = ING.dependencyProblem and ("|cffff4040" .. ING.dependencyProblem .. "|r") or "Loading quests..."
     else
         local section = results.sections[1]
         if section and section.kind == "current" then

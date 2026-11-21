@@ -379,7 +379,11 @@ local function Render(results)
     end
 
     if not results then
-        addText(ING.Scanner.IsIndexed() and "Working..." or "Reading the Questie database. This takes a few seconds after logging in...")
+        if ING.dependencyProblem then
+            addText(ING.Colorize("urgent", ING.dependencyProblem))
+        else
+            addText(ING.Scanner.IsIndexed() and "Working..." or "Reading the Questie database. This takes a few seconds after logging in...")
+        end
     else
         window.subtitle:SetText(("Level %d  |  %s  |  quests level %d-%d"):format(results.level, results.zoneName, math.max(1, results.low), results.high))
 
@@ -394,7 +398,9 @@ local function Render(results)
             end
         end
 
-        if ING.db.showCoach then
+        -- Gear, talents and professions: shown below the quest list.
+        local function addCharacterSections()
+            if not ING.db.showCoach then return end
             local gear = ING.Coach.GetGear()
             addHeader("Your gear")
             addText(GearSummary(gear, results.level), "GameFontHighlightSmall")
@@ -442,6 +448,75 @@ local function Render(results)
                 gearToggle:Show()
                 y = y + 24
             end
+
+            -- Talents
+            local talents = ING.Talents.Analyze(results.level)
+            if talents then
+                local unspent = talents.unspent and talents.unspent > 0 and (", |cffff9933%d unspent|r"):format(talents.unspent) or ""
+                addHeader(("Talents  |cffaaaaaa(%d points spent%s)|r"):format(talents.total, unspent))
+                local classData = talents.classData
+                local lines = {}
+                for _, tree in ipairs(talents.trees) do
+                    local marker = ""
+                    if classData and tree.id == classData.leveling then
+                        marker = "  " .. ING.Colorize("good", "recommended for leveling")
+                    elseif classData and classData.alsoFine and classData.alsoFine[tree.id] then
+                        marker = "  " .. ING.Colorize("info", "fine for " .. classData.alsoFine[tree.id])
+                    end
+                    local severity = (talents.main == tree and talents.verdict ~= "info") and talents.verdict or "info"
+                    lines[#lines + 1] = ("%s |cffffffff%d|r%s"):format(ING.Colorize(severity, tree.name .. ":"), tree.spent, marker)
+                end
+                addText(table.concat(lines, "\n"), "GameFontHighlightSmall")
+
+                local advice = {}
+                for _, issue in ipairs(talents.issues) do
+                    advice[#advice + 1] = ING.Colorize(issue[1], issue[2])
+                end
+                if talents.needsReset then
+                    advice[#advice + 1] = ING.Colorize("warn", ING.Talents.RESET_TEXT)
+                end
+                if #advice > 0 then
+                    addText(table.concat(advice, "\n"), "GameFontHighlightSmall")
+                end
+
+                if #talents.keys > 0 and classData then
+                    local keys = { ("Key %s talents for leveling:"):format(classData.trees[classData.leveling]) }
+                    for _, key in ipairs(talents.keys) do
+                        if key.state == "taken" then
+                            keys[#keys + 1] = ING.Colorize("good", ("  [x] %s (%d/%d)"):format(key.name, key.rank or 0, key.max or key.rank or 0))
+                        elseif key.state == "open" then
+                            keys[#keys + 1] = ING.Colorize("warn", ("  [  ] %s - you can take it now"):format(key.name))
+                        else
+                            keys[#keys + 1] = ING.Colorize("info", ("  [  ] %s - opens at %d points in the tree"):format(key.name, key.points))
+                        end
+                    end
+                    if talents.next then
+                        keys[#keys + 1] = "Next talent to take: " .. ING.Colorize("tip", talents.next)
+                    end
+                    addText(table.concat(keys, "\n"), "GameFontHighlightSmall")
+                end
+                if classData and classData.note then
+                    addText(ING.Colorize("info", classData.note), "GameFontHighlightSmall")
+                end
+            end
+
+            -- Professions
+            local professions = ING.Professions.Analyze(results.level)
+            if professions then
+                addHeader("Professions")
+                local lines = {}
+                if #professions.entries == 0 then
+                    lines[1] = ING.Colorize("warn", "You have no professions yet.") .. " Two gathering professions (like Herbalism and Mining) earn gold while you quest."
+                end
+                for _, entry in ipairs(professions.entries) do
+                    lines[#lines + 1] = ("%s |cffffffff%d/%d|r  %s"):format(ING.Colorize(entry.severity, entry.name .. ":"),
+                        entry.rank, entry.max, ING.Colorize(entry.severity, entry.label))
+                end
+                for _, a in ipairs(professions.advice) do
+                    lines[#lines + 1] = ING.Colorize(a.severity, a.text)
+                end
+                addText(table.concat(lines, "\n"), "GameFontHighlightSmall")
+            end
         end
 
         if results.currentEmpty then
@@ -464,6 +539,8 @@ local function Render(results)
                 addQuest(item)
             end
         end
+
+        addCharacterSections()
 
         addHeader("Guide: where to level at " .. results.level)
         if #results.guideZones == 0 then

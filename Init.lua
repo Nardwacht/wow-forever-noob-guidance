@@ -35,8 +35,60 @@ function ING.RequestRefresh(delay)
     end)
 end
 
+-- Questie and QuestieDB are optional dependencies in the .toc, so WoW always
+-- loads this addon and we can say exactly what is wrong, instead of WoW's
+-- bare "Dependency missing" in the AddOns list.
+local REASONS = {
+    MISSING = "is not installed. Install it into Interface\\AddOns.",
+    DISABLED = "is turned off. Tick it in the AddOns list on the character screen.",
+    INTERFACE_VERSION = "is out of date for this game version. Update it, or tick \"Load out of date AddOns\".",
+    DEP_MISSING = "is missing one of its own dependencies. Reinstall it.",
+    DEP_DISABLED = "has one of its own dependencies turned off.",
+    CORRUPT = "looks damaged. Reinstall it.",
+    BANNED = "is blocked by the game.",
+}
+
+local function AddOnState(name)
+    local loaded
+    if C_AddOns and C_AddOns.IsAddOnLoaded then
+        loaded = C_AddOns.IsAddOnLoaded(name)
+    elseif IsAddOnLoaded then
+        loaded = IsAddOnLoaded(name)
+    end
+    if loaded then return true end
+    local getInfo = (C_AddOns and C_AddOns.GetAddOnInfo) or GetAddOnInfo
+    local reason
+    if getInfo then
+        local ok, _, _, _, _, why = pcall(getInfo, name)
+        if ok then reason = why end
+    end
+    return false, reason
+end
+
+local function CheckDependencies()
+    local problems = {}
+    for _, name in ipairs({ "QuestieDB", "Questie" }) do
+        local loaded, reason = AddOnState(name)
+        if not loaded then
+            problems[#problems + 1] = name .. " " .. (REASONS[reason or ""] or ("could not load" .. (reason and (" (" .. tostring(reason) .. ")") or "") .. ". Restart WoW, or reinstall it."))
+        end
+    end
+    if #problems > 0 then
+        ING.dependencyProblem = table.concat(problems, "\n") .. "\nThe quest list needs Questie and QuestieDB."
+        return false
+    end
+    return true
+end
+
 -- Questie needs a few seconds after login before its data is ready.
 local function WaitForQuestie()
+    if not CheckDependencies() then
+        for line in ING.dependencyProblem:gmatch("[^\n]+") do
+            ING.Print("|cffff4040" .. line .. "|r")
+        end
+        ING.FireResults()
+        return
+    end
     local waited = 0
     local ticker
     ticker = C_Timer.NewTicker(1, function()
@@ -93,6 +145,8 @@ local function HelpLines()
         ("/ing lines <n> - quests shown in the panel (now %d)"):format(ING.db.panelLines),
         "/ing tips - check everything again and list the coach tips in chat",
         "/ing gear - list your gear with item levels in chat",
+        "/ing talents - check your talent trees in chat",
+        "/ing prof - check your professions in chat",
         "/ing coach - show or hide the coach tip in the panel",
         "/ing coach reset - show every coach tip you hid again",
         "/ing minimap - show or hide the minimap button",
@@ -144,6 +198,34 @@ SlashCmdList.IMPULSNOOBGUIDANCE = function(msg)
                     entry.link and ("ilvl " .. (entry.level or "?")) or "",
                     entry.durability and ("  %d%%"):format(entry.durability) or "",
                     ING.Colorize(severity, "[" .. label .. "]")))
+            end
+        end
+    elseif cmd == "talents" then
+        local level = ING.playerLevel or UnitLevel("player")
+        local talents = ING.Talents.Analyze(level)
+        if not talents then
+            ING.Print("talents can't be read on this client.")
+        else
+            local trees = {}
+            for _, t in ipairs(talents.trees) do trees[#trees + 1] = ("%s %d"):format(t.name, t.spent) end
+            ING.Print("talents: " .. table.concat(trees, ", ") .. (talents.unspent and talents.unspent > 0 and (" (%d unspent)"):format(talents.unspent) or ""))
+            for _, issue in ipairs(talents.issues) do
+                print("  " .. ING.Colorize(issue[1], issue[2]))
+            end
+            if talents.next then print("  Next talent to take: " .. ING.Colorize("tip", talents.next)) end
+            if talents.needsReset then print("  " .. ING.Colorize("warn", ING.Talents.RESET_TEXT)) end
+        end
+    elseif cmd == "professions" or cmd == "prof" then
+        local professions = ING.Professions.Analyze(ING.playerLevel or UnitLevel("player"))
+        if not professions then
+            ING.Print("professions can't be read on this client.")
+        else
+            ING.Print(#professions.entries == 0 and "you have no professions yet." or "professions:")
+            for _, e in ipairs(professions.entries) do
+                print(("  %s %d/%d %s"):format(ING.Colorize(e.severity, e.name .. ":"), e.rank, e.max, ING.Colorize(e.severity, "[" .. e.label .. "]")))
+            end
+            for _, a in ipairs(professions.advice) do
+                print("  " .. ING.Colorize(a.severity, a.text))
             end
         end
     elseif cmd == "coach" and arg == "reset" then

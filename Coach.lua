@@ -78,6 +78,11 @@ local function IsAddOnLoaded(name)
     return Call(_G.IsAddOnLoaded, name)
 end
 
+-- Shared with Talents.lua and Professions.lua.
+Coach.Call = Call
+Coach.SpellName = SpellName
+Coach.IsSpellKnown = IsSpellKnown
+
 local function FormatMoney(copper)
     if not copper or copper <= 0 then return nil end
     if GetCoinTextureString then return GetCoinTextureString(copper) end
@@ -355,7 +360,11 @@ end
 local function UnspentTalentPoints()
     local points = Call(_G.UnitCharacterPoints, "player")
     if points then return points end
-    return Call(_G.GetUnspentTalentPoints)
+    points = Call(_G.GetUnspentTalentPoints)
+    if points then return points end
+    -- WoW Forever: unspent points come from the talent tree's currency.
+    local talents = ING.Talents and ING.Talents.Get()
+    return talents and talents.unspent
 end
 
 local function QuestLogFill()
@@ -388,6 +397,11 @@ local function DungeonsForLevel(level)
 end
 
 local detectors = {}
+
+-- Other modules (Talents.lua, Professions.lua) add their own checks here.
+function Coach.AddDetector(detector)
+    detectors[#detectors + 1] = detector
+end
 
 -- Broken or nearly broken armour.
 detectors[#detectors + 1] = function(ctx)
