@@ -1,0 +1,20 @@
+## Interface: 16001
+## Title: ImpulsNoobGuidance
+## Notes: Shows the quests you can do right now (your level and up to 5 below), grouped by zone, plus where to go next.
+## Author: Impuls
+## Version: 1.2.0
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+## Dependencies: QuestieDB, Questie
+## SavedVariables: ImpulsNoobGuidanceDB
+## SavedVariablesPerCharacter: ImpulsNoobGuidanceCharDB
+
+Core.lua
+Data\Zones.lua
+Data\Tips.lua
+Data\ClassMilestones.lua
+Scanner.lua
+Coach.lua
+UI\Window.lua
+UI\Panel.lua
+UI\MinimapButton.lua
+Init.lua
